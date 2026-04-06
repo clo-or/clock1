@@ -116,6 +116,15 @@ if uploaded_file is not None:
         st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
 elif st.session_state['use_sample']:
     df_raw = get_sample_data()
+if df_raw is not None:
+    # 가로형 시계열 데이터 자동 전치 (행은 적은데 열이 많은 경우)
+    if len(df_raw) <= 5 and len(df_raw.columns) > 5:
+        try:
+            df_raw = df_raw.set_index(df_raw.columns[0]).T.reset_index()
+            df_raw.rename(columns={'index': '기간'}, inplace=True)
+            st.info("💡 데이터가 가로로 긴 형태여서, 시계열 분석을 위해 자동으로 세로 방향(전치)으로 변환했습니다.")
+        except:
+            pass
 
 if df_raw is not None and len(df_raw) > 5:
     st.markdown("### 🗂️ 데이터 컬럼 매핑 (전처리)")
@@ -313,5 +322,7 @@ if df_raw is not None and len(df_raw) > 5:
         else:
             st.error("학습에 필요한 최소 데이터 포인트가 부족합니다.")
 else:
-    if uploaded_file is None and not use_sample:
+    if df_raw is not None and len(df_raw) <= 5:
+        st.error(f"데이터의 세로 길이(Data points)가 너무 짧습니다 (현재 {len(df_raw)}개). 일반적인 형태의 시계열 데이터인지 확인해주세요.")
+    elif uploaded_file is None and not use_sample:
         st.info("👈 사이드바에서 데이터를 업로드하여 시작해보세요.")

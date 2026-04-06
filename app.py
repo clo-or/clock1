@@ -2,24 +2,29 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
-from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
+from plotly.subplots import make_subplots
 import warnings
+from statsmodels.tsa.seasonal import seasonal_decompose
 
 warnings.filterwarnings('ignore')
 
-# --- CONFIGURATION ---
-st.set_page_config(
-    page_title="지능형 시계열 예측", 
-    page_icon="📈", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+try:
+    from sktime.forecasting.exp_smoothing import ExponentialSmoothing as SktimeExponentialSmoothing
+    from sktime.forecasting.naive import NaiveForecaster
+    from sktime.forecasting.model_selection import temporal_train_test_split
+    from sktime.performance_metrics.forecasting import mean_absolute_error as sktime_mae
+    from sktime.performance_metrics.forecasting import mean_squared_error as sktime_mse
+    from sktime.performance_metrics.forecasting import mean_absolute_percentage_error as sktime_mape
+    SK_AVAILABLE = True
+except ImportError:
+    SK_AVAILABLE = False
+    from statsmodels.tsa.holtwinters import ExponentialSmoothing
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
+    
+st.set_page_config(page_title="종합 시계열 분석 엔진", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
 
-# --- LIGHT/PREMIUM CSS INJECTION ---
 st.markdown("""
 <style>
-/* 밝은 테마 배경 및 텍스트 색상 오버라이드 */
 [data-testid="stAppViewContainer"] {
     background-color: #f8fafc;
     background-image: radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
@@ -30,8 +35,6 @@ st.markdown("""
     backdrop-filter: blur(12px);
     border-right: 1px solid rgba(0,0,0,0.05);
 }
-
-/* 글래스모피즘 카드 스타일 */
 .glass-card {
     background: rgba(255, 255, 255, 0.9);
     backdrop-filter: blur(12px);
@@ -43,259 +46,251 @@ st.markdown("""
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     margin-bottom: 1rem;
 }
-
 .glass-card:hover {
     transform: translateY(-5px);
     box-shadow: 0 8px 25px 0 rgba(0, 0, 0, 0.1);
 }
-
-.metric-value {
-    font-size: 2.2rem;
-    font-weight: 800;
-    color: #2563eb;
-    margin: 0.5rem 0;
-}
-
-.metric-label {
-    color: #64748b;
-    font-size: 0.9rem;
-    font-weight: 700;
-}
-
-/* 메인 타이틀 그라데이션 */
+.metric-value { font-size: 2.2rem; font-weight: 800; color: #2563eb; margin: 0.5rem 0; }
+.metric-label { color: #64748b; font-size: 0.9rem; font-weight: 700; }
 .title-gradient {
-    font-size: 2.5rem;
-    font-weight: 900;
+    font-size: 2.5rem; font-weight: 900;
     background: linear-gradient(to right, #2563eb, #7c3aed);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 0.5rem;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem;
 }
-.subtitle {
-    color: #475569;
-    font-size: 1.1rem;
-    margin-bottom: 2rem;
-}
-
-/* 기본 텍스트 색상 조정 (다크모드 강제 해제 느낌) */
-h1, h2, h3, p, span, div {
-    color: #1e293b;
-}
-
-/* Sidebar 내부 텍스트 처리 */
-[data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label {
-    color: #1e293b !important;
-}
+.subtitle { color: #475569; font-size: 1.1rem; margin-bottom: 2rem; }
+h1, h2, h3, p, span, div { color: #1e293b; }
+[data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label { color: #1e293b !important; }
+[data-testid="stSidebar"] ::-webkit-scrollbar { width: 0px; background: transparent; }
 </style>
 """, unsafe_allow_html=True)
 
-
-# --- FORECASTING FUNCTION ---
 @st.cache_data
-def generate_forecast(df, horizon):
-    date_col = None
-    val_col = None
-    
-    for col in df.columns:
-        if df[col].dtype == 'object':
-            try:
-                pd.to_datetime(df[col])
-                date_col = col
-                break
-            except:
-                pass
-                
-    if date_col is None:
-        date_col = df.columns[0]
-        val_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
-    else:
-        for col in df.columns:
-            if col != date_col and pd.api.types.is_numeric_dtype(df[col]):
-                val_col = col
-                break
-        if val_col is None:
-            val_col = df.columns[1] if df.columns[1] != date_col else df.columns[0]
-
-    df[date_col] = pd.to_datetime(df[date_col])
-    df = df.sort_values(by=date_col).reset_index(drop=True)
-    df[val_col] = pd.to_numeric(df[val_col], errors='coerce')
-    df = df.dropna(subset=[val_col]).reset_index(drop=True)
-    
-    dates = df[date_col]
-    y = df[val_col].values
-    n_samples = len(y)
-    
-    if n_samples < 5:
-        return None, "데이터가 너무 적습니다. 최소 5개의 데이터 포인트가 필요합니다."
-        
-    test_size = max(int(n_samples * 0.2), min(3, int(n_samples*0.1)))
-    test_size = min(test_size, n_samples - 2)
-    
-    train_y = y[:-test_size]
-    test_y = y[-test_size:]
-    
-    try:
-        eval_model = ExponentialSmoothing(train_y, trend='add', seasonal=None, initialization_method="estimated")
-        eval_fitted = eval_model.fit()
-        pred_y = eval_fitted.forecast(test_size)
-    except Exception:
-        pred_y = np.repeat(train_y[-1], test_size)
-
-    mae = mean_absolute_error(test_y, pred_y)
-    rmse = np.sqrt(mean_squared_error(test_y, pred_y))
-    mape = mean_absolute_percentage_error(test_y, pred_y)
-
-    try:
-        full_model = ExponentialSmoothing(y, trend='add', seasonal=None, initialization_method="estimated")
-        full_fitted = full_model.fit()
-        future_forecast = full_fitted.forecast(horizon)
-    except:
-        future_forecast = np.repeat(y[-1], horizon)
-
-    freq = pd.infer_freq(dates)
-    if freq is None:
-        avg_diff = (dates.iloc[-1] - dates.iloc[0]) / (len(dates) - 1)
-        future_dates = [dates.iloc[-1] + i * avg_diff for i in range(1, horizon + 1)]
-    else:
-        future_dates = pd.date_range(start=dates.iloc[-1], periods=horizon+1, freq=freq)[1:]
-
-    return {
-        "metrics": {"mae": mae, "rmse": rmse, "mape": mape},
-        "hist_dates": dates,
-        "hist_values": y,
-        "future_dates": pd.Series(future_dates),
-        "future_values": future_forecast
-    }, None
-
 def get_sample_data():
     dates = pd.date_range(start="2023-01-01", periods=100, freq="D")
     values = np.linspace(10, 50, 100) + np.sin(np.linspace(0, 20, 100)) * 10 + np.random.normal(0, 2, 100)
-    return pd.DataFrame({"날짜": dates, "판매량": values})
+    df = pd.DataFrame({"날짜": dates, "판매량": values})
+    # 샘플 데이터 테스트를 위해 결측치 추가 (오류가 없기 위한 정상적인 범위)
+    df.loc[20:25, "판매량"] = np.nan
+    return df
 
 # --- UI LAYOUT ---
 st.markdown('<div class="title-gradient">지능형 시계열 예측 시스템</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">자동화된 데이터 분석 및 미래 예측 대시보드</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">데이터 전처리, 계절성 분해 및 sktime 머신러닝 예측 시스템</div>', unsafe_allow_html=True)
 
 with st.sidebar:
-    st.header("⚙️ 설정 및 데이터 업로드")
-    st.markdown("분석할 단변량 시계열 데이터(CSV)를 업로드해주세요.")
-    
-    uploaded_file = st.file_uploader("CSV 파일 업로드", type=["csv"])
-    
-    st.markdown("또는 아래 버튼을 눌러 샘플 데이터를 사용해보세요.")
-    use_sample = st.button("📊 샘플 데이터로 실행해보기", use_container_width=True)
+    st.header("⚙️ 데이터 로드")
+    uploaded_file = st.file_uploader("단변량 시계열 CSV 업로드", type=["csv"])
+    use_sample = st.button("📊 샘플 데이터 사용", use_container_width=True)
     
     st.divider()
-    
     st.subheader("예측 파라미터")
-    horizon = st.slider("예측 구간 (시평)", min_value=1, max_value=100, value=12, help="미래에 예측할 기간의 수를 설정합니다.")
+    horizon = st.slider("미래 예측 구간 (시평)", min_value=1, max_value=100, value=12, help="미래에 예측할 기간의 수를 설정합니다.")
+    model_choice = st.selectbox("예측 모델 (sktime/statsmodels)", ["Holt-Winters 평활법", "Naive (단순 이동)"])
 
-# 의사결정: 업로드 파일이 있거나 샘플 버튼을 눌렀을 경우
+    st.markdown("<div style='margin-top: 30px; text-align: center; color: #94a3b8; font-size: 0.95em; font-weight: 600;'>C321050 이승아<br>스마트제조 프로젝트 1</div>", unsafe_allow_html=True)
+
 st.session_state['use_sample'] = st.session_state.get('use_sample', False)
 if use_sample:
     st.session_state['use_sample'] = True
 if uploaded_file is not None:
-    st.session_state['use_sample'] = False # 업로드하면 샘플모드 해제
+    st.session_state['use_sample'] = False
 
-df = None
+df_raw = None
 if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-    st.success(f"'{uploaded_file.name}' 파일이 성공적으로 업로드되었습니다.")
+    # 쉼표(,) 제거를 고려한 안전한 데이터 파싱
+    try:
+        df_raw = pd.read_csv(uploaded_file, thousands=',')
+        st.success(f"'{uploaded_file.name}' 업로드 성공.")
+    except Exception as e:
+        st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
 elif st.session_state['use_sample']:
-    df = get_sample_data()
-    st.info("💡 샘플 데이터를 사용하여 데모를 실행 중입니다. (임의의 가상 판매량 데이터)")
+    df_raw = get_sample_data()
+    st.info("💡 강의 실습용 샘플 데이터를 로드했습니다. (결측치 데모 포함)")
 
-if df is not None:
-    with st.spinner("데이터 분석 및 예측 모델 비딩 중..."):
-        result, error = generate_forecast(df, horizon)
+if df_raw is not None and len(df_raw) > 5:
+    date_col = next((c for c in df_raw.columns if df_raw[c].dtype == 'object' or 'date' in str(df_raw[c].dtype).lower()), df_raw.columns[0])
+    val_col = next((c for c in df_raw.columns if c != date_col and pd.api.types.is_numeric_dtype(df_raw[c])), df_raw.columns[-1])
+    
+    df_raw[date_col] = pd.to_datetime(df_raw[date_col], errors='coerce')
+    df_raw = df_raw.dropna(subset=[date_col]).sort_values(by=date_col).reset_index(drop=True)
+    df_raw[val_col] = pd.to_numeric(df_raw[val_col], errors='coerce')
+    
+    tab1, tab2, tab3 = st.tabs(["🧹 데이터 전처리", "🔍 시계열 분해", "🚀 모델 예측"])
+    
+    # ---------------- TAB 1: PREPROCESSING ----------------
+    with tab1:
+        st.subheader("데이터 결측치 보간 및 정상성 변환")
         
-    if error:
-        st.error(error)
-    else:
-        col1, col2, col3 = st.columns(3)
-        metrics = result['metrics']
-        
-        with col1:
-            st.markdown(f"""
-            <div class="glass-card">
-                <div class="metric-label">MAE (평균 절대 오차)</div>
-                <div class="metric-value">{metrics['mae']:.2f}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            interpolate_method = st.selectbox("결측치 보간법 선택", ["선형 보간 (Linear)", "스플라인 보간 (Spline)", "삭제 (Drop)"])
+        with c2:
+            transform_method = st.selectbox("정상성(Stationarity) 변환", ["적용 안 함", "로그 변환 (Log Transform)", "1차 차분 (1st Differencing)"])
             
-        with col2:
-            st.markdown(f"""
-            <div class="glass-card">
-                <div class="metric-label">RMSE (평균 제곱근 오차)</div>
-                <div class="metric-value">{metrics['rmse']:.2f}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        df_processed = df_raw.copy()
+        
+        if df_processed[val_col].isnull().any():
+            st.warning(f"⚠️ 원본 데이터에 **{df_processed[val_col].isnull().sum()}개**의 결측치가 존재합니다.")
             
-        with col3:
-            st.markdown(f"""
-            <div class="glass-card">
-                <div class="metric-label">MAPE (평균 절대 비율 오차)</div>
-                <div class="metric-value">{(metrics['mape']*100):.1f}%</div>
-            </div>
-            """, unsafe_allow_html=True)
+        if interpolate_method == "선형 보간 (Linear)":
+            df_processed[val_col] = df_processed[val_col].interpolate(method='linear')
+        elif interpolate_method == "스플라인 보간 (Spline)":
+            try:
+                df_processed[val_col] = df_processed[val_col].interpolate(method='cubicspline')
+            except:
+                df_processed[val_col] = df_processed[val_col].interpolate(method='linear') # Fallback if spline fails
+        else:
+            df_processed = df_processed.dropna(subset=[val_col]).reset_index(drop=True)
             
-        st.markdown("### 📈 시계열 데이터 및 예측 시각화")
+        # 남은 결측치 제거
+        df_processed = df_processed.dropna(subset=[val_col]).reset_index(drop=True)
         
-        fig = go.Figure()
+        if len(df_processed) > 5:
+            if transform_method == "로그 변환 (Log Transform)":
+                min_val = df_processed[val_col].min()
+                offset = abs(min_val) + 1 if min_val <= 0 else 0
+                df_processed[val_col] = np.log((df_processed[val_col] + offset).astype(float))
+            elif transform_method == "1차 차분 (1st Differencing)":
+                df_processed[val_col] = df_processed[val_col].diff()
+                df_processed = df_processed.dropna(subset=[val_col]).reset_index(drop=True)
+
+            fig_pre = go.Figure()
+            fig_pre.add_trace(go.Scatter(x=df_raw[date_col], y=df_raw[val_col], mode='lines', line=dict(color='rgba(255, 0, 0, 0.4)', width=5), name="원본"))
+            fig_pre.add_trace(go.Scatter(x=df_processed[date_col], y=df_processed[val_col], mode='lines', line=dict(color='#2563eb'), name="전처리 완료"))
+            fig_pre.update_layout(template='plotly_white', title="원본 vs 전처리 비교", hovermode='x unified')
+            st.plotly_chart(fig_pre, use_container_width=True)
+        else:
+            st.error("데이터 전처리 후 유효한 데이터가 너무 부족합니다.")
+
+    # ---------------- TAB 2: DECOMPOSITION ----------------
+    with tab2:
+        st.subheader("계절성 및 추세 성분 분해 (STL / Classical)")
+        period = st.number_input("계절성 주기", min_value=2, max_value=365, value=7)
         
-        fig.add_trace(go.Scatter(
-            x=result['hist_dates'], 
-            y=result['hist_values'],
-            mode='lines',
-            name='과거 실제 데이터',
-            line=dict(color='#2563eb', width=2)
-        ))
+        if len(df_processed) > period * 2:
+            try:
+                ts = df_processed[val_col].values
+                decomposition = seasonal_decompose(ts, model='additive', period=int(period))
+                
+                fig_dec = make_subplots(rows=4, cols=1, shared_xaxes=True, 
+                                        subplot_titles=("1. 원본", "2. 추세 (Trend)", "3. 계절성 (Seasonality)", "4. 잔차 (Residuals)"))
+                x_vals = df_processed[date_col]
+                
+                fig_dec.add_trace(go.Scatter(x=x_vals, y=ts, line=dict(color='#2563eb')), row=1, col=1)
+                fig_dec.add_trace(go.Scatter(x=x_vals, y=decomposition.trend, line=dict(color='#ef4444')), row=2, col=1)
+                fig_dec.add_trace(go.Scatter(x=x_vals, y=decomposition.seasonal, line=dict(color='#10b981')), row=3, col=1)
+                fig_dec.add_trace(go.Scatter(x=x_vals, y=decomposition.resid, mode='markers', marker=dict(color='#8b5cf6', size=4)), row=4, col=1)
+                
+                fig_dec.update_layout(height=800, template='plotly_white', showlegend=False)
+                st.plotly_chart(fig_dec, use_container_width=True)
+            except Exception as e:
+                st.error(f"분해 중 오류가 발생했습니다: {e}")
+        else:
+            st.warning("데이터가 주기를 시각화하기에 충분하지 않습니다.")
+
+    # ---------------- TAB 3: MODELING ----------------
+    with tab3:
+        st.subheader(f"시계열 성능 검증 및 미래 예측")
+        if not SK_AVAILABLE:
+            st.warning("⚠️ `sktime` 모듈 오류로 인해 `statsmodels` 폴백 모드를 사용 중입니다.")
+            
+        y_raw = df_processed[val_col].values
+        dates = df_processed[date_col].reset_index(drop=True)
         
-        conn_x = [result['hist_dates'].iloc[-1], result['future_dates'].iloc[0]]
-        conn_y = [result['hist_values'][-1], result['future_values'][0]]
-        fig.add_trace(go.Scatter(
-            x=conn_x, y=conn_y,
-            mode='lines',
-            showlegend=False,
-            line=dict(color='#8b5cf6', width=3, dash='dash')
-        ))
-        
-        fig.add_trace(go.Scatter(
-            x=result['future_dates'], 
-            y=result['future_values'],
-            mode='lines+markers',
-            name='AI 예측 결과',
-            line=dict(color='#8b5cf6', width=3, dash='dash'),
-            marker=dict(size=6, color='#a78bfa')
-        ))
-        
-        fig.update_layout(
-            template='plotly_white',
-            plot_bgcolor='rgba(255,255,255,0.8)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            xaxis=dict(showgrid=True, gridcolor='rgba(0,0,0,0.1)', title="날짜 (Date)"),
-            yaxis=dict(showgrid=True, gridcolor='rgba(0,0,0,0.1)', title="값 (Value)"),
-            margin=dict(l=20, r=20, t=30, b=20),
-            hovermode='x unified',
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
-                bgcolor="rgba(255, 255, 255, 0.8)",
-                bordercolor="rgba(0,0,0,0.1)",
-                borderwidth=1
-            )
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
+        if len(y_raw) > 10:
+            test_size = max(int(len(y_raw) * 0.2), 3)
+
+            if SK_AVAILABLE:
+                y = pd.Series(y_raw)
+                y.index = pd.RangeIndex(len(y))
+                
+                train_y, test_y = temporal_train_test_split(y, test_size=test_size)
+                
+                if model_choice == "Holt-Winters 평활법":
+                    model = SktimeExponentialSmoothing(trend='add', seasonal=None)
+                else:
+                    model = NaiveForecaster(strategy="last")
+                
+                try:
+                    model.fit(train_y)
+                    fh_test = np.arange(1, len(test_y) + 1)
+                    pred_y = model.predict(fh=fh_test)
+                    
+                    mae = sktime_mae(test_y, pred_y)
+                    rmse = np.sqrt(sktime_mse(test_y, pred_y))
+                    mape = sktime_mape(test_y, pred_y)
+                    
+                    model_full = SktimeExponentialSmoothing(trend='add', seasonal=None) if model_choice == "Holt-Winters 평활법" else NaiveForecaster(strategy="last")
+                    model_full.fit(y)
+                    future_forecast = model_full.predict(fh=np.arange(1, horizon + 1))
+                except Exception as e:
+                    st.error(f"모델 연산 중 오류 발생 (단순 이동 평균으로 대체합니다): {e}")
+                    fallback_val = float(train_y.iloc[-1]) if len(train_y) > 0 else 0.0
+                    pred_y = pd.Series(np.repeat(fallback_val, len(test_y)), index=test_y.index)
+                    future_forecast = pd.Series(np.repeat(fallback_val, horizon))
+                    mae, rmse, mape = 0, 0, 0
+            else:
+                train_y = y_raw[:-test_size]
+                test_y = y_raw[-test_size:]
+                try:
+                    if model_choice == "Naive (단순 이동)":
+                        pred_y = np.repeat(train_y[-1], test_size)
+                        future_forecast = np.repeat(y_raw[-1], horizon)
+                    else:
+                        eval_model = ExponentialSmoothing(train_y, trend='add', seasonal=None, initialization_method="estimated")
+                        pred_y = eval_model.fit(optimized=True).forecast(test_size)
+                        full_model = ExponentialSmoothing(y_raw, trend='add', seasonal=None, initialization_method="estimated")
+                        future_forecast = full_model.fit(optimized=True).forecast(horizon)
+                    
+                    mae = mean_absolute_error(test_y, pred_y)
+                    rmse = np.sqrt(mean_squared_error(test_y, pred_y))
+                    mape = mean_absolute_percentage_error(test_y, pred_y)
+                except Exception as e:
+                    st.error(f"모델 연산 중 오류 발생 (대체값 출력): {e}")
+                    fallback_val = float(train_y[-1]) if len(train_y) > 0 else 0.0
+                    pred_y = np.repeat(fallback_val, test_size)
+                    future_forecast = np.repeat(fallback_val, horizon)
+                    mae, rmse, mape = 0, 0, 0
+
+            # UI rendering
+            st.markdown(f"**Train (80%) / Test (20%) 정확성 검증결과**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown(f'<div class="glass-card"><div class="metric-label">MAE</div><div class="metric-value">{mae:.2f}</div></div>', unsafe_allow_html=True)
+            with col2:
+                st.markdown(f'<div class="glass-card"><div class="metric-label">RMSE</div><div class="metric-value">{rmse:.2f}</div></div>', unsafe_allow_html=True)
+            with col3:
+                st.markdown(f'<div class="glass-card"><div class="metric-label">MAPE</div><div class="metric-value">{(mape * 100):.1f}%</div></div>', unsafe_allow_html=True)
+                
+            freq = pd.infer_freq(dates)
+            if freq is None:
+                avg_diff = (dates.iloc[-1] - dates.iloc[0]) / (len(dates) - 1)
+                future_dates = [dates.iloc[-1] + i * avg_diff for i in range(1, horizon + 1)]
+            else:
+                future_dates = pd.date_range(start=dates.iloc[-1], periods=horizon+1, freq=freq)[1:]
+
+            fig = go.Figure()
+            
+            # Make sure everything is array
+            train_y_vals = np.array(train_y)
+            test_y_vals = np.array(test_y)
+            pred_y_vals = np.array(pred_y)
+            future_forecast_vals = np.array(future_forecast)
+            
+            fig.add_trace(go.Scatter(x=dates.iloc[:-test_size], y=train_y_vals, mode='lines', name='Train 데이터', line=dict(color='#cbd5e1')))
+            fig.add_trace(go.Scatter(x=dates.iloc[-test_size:], y=test_y_vals, mode='lines', name='Test 데이터 (실제)', line=dict(color='#3b82f6', width=2)))
+            fig.add_trace(go.Scatter(x=dates.iloc[-test_size:], y=pred_y_vals, mode='lines', name='Test 예측', line=dict(color='#ef4444', dash='dot', width=3)))
+            
+            if len(future_dates) > 0 and len(future_forecast_vals) > 0:
+                conn_x = [dates.iloc[-1], future_dates[0]]
+                conn_y = [y_raw[-1], future_forecast_vals[0]]
+                fig.add_trace(go.Scatter(x=conn_x, y=conn_y, mode='lines', showlegend=False, line=dict(color='#a855f7', width=3, dash='dash')))
+                fig.add_trace(go.Scatter(x=future_dates, y=future_forecast_vals, mode='lines+markers', name='미래 시평 예측', line=dict(color='#a855f7', width=3, dash='dash'), marker=dict(size=6)))
+
+            fig.update_layout(template='plotly_white', hovermode='x unified', title="데이터 검증 및 미래 예측 시각화")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error("학습에 필요한 최소 데이터 포인트가 부족합니다.")
 else:
-    st.info("👈 좌측 사이드바에서 CSV 파일을 업로드하시거나 '샘플 데이터로 실행해보기'를 클릭하세요.")
-    st.markdown("### 📈 빈 대시보드 미리보기")
-    st.markdown('''
-        <div style="display:flex; justify-content:center; align-items:center; height:30vh; background: rgba(255,255,255,0.5); border: 2px dashed rgba(0,0,0,0.2); border-radius:16px;">
-            <p style="color: #64748b; font-weight: 500;">파일을 업로드하면 이곳에 인터랙티브 예측 차트가 표시됩니다.</p>
-        </div>
-    ''', unsafe_allow_html=True)
+    if uploaded_file is None and not use_sample:
+        st.info("👈 사이드바에서 데이터를 업로드하여 시작해보세요.")

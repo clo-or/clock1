@@ -61,6 +61,48 @@ st.markdown("""
 h1, h2, h3, p, span, div { color: #1e293b; }
 [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label { color: #1e293b !important; }
 [data-testid="stSidebar"] ::-webkit-scrollbar { width: 0px; background: transparent; }
+.source-card {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1px solid #bfdbfe;
+    border-left: 5px solid #3b82f6;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 10px 0 25px 0;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+.source-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #3b82f6;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+    display: block;
+}
+.source-name {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #1e3a5f;
+    display: block;
+    margin-bottom: 15px;
+}
+.source-btn {
+    display: inline-block;
+    background: #3b82f6;
+    color: white !important;
+    padding: 8px 24px;
+    border-radius: 8px;
+    text-decoration: none !important;
+    font-weight: 700;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+.source-btn:hover {
+    background: #2563eb;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(59, 130, 246, 0.4);
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -117,13 +159,12 @@ if uploaded_file is not None:
 elif st.session_state['use_sample']:
     df_raw = get_sample_data()
     st.markdown("""
-    <div style="background-color:#dbeafe; border-left:4px solid #3b82f6; border-radius:8px; padding:14px 20px; color:#1e3a5f;">
-        💡 데이터 출처 : 대전광역시 서구_관저문예회관 홈페이지 방문자 현황
-        <div style="text-align:center; margin-top:10px;">
-            <a href="https://www.data.go.kr/data/15039305/fileData.do" target="_blank"
-               style="display:inline-block; background:#3b82f6; color:white; padding:6px 20px;
-                      border-radius:6px; text-decoration:none; font-weight:600; font-size:0.9rem;">
-                🔗 링크 확인
+    <div class="source-card">
+        <span class="source-title">💡 데이터 출처</span>
+        <span class="source-name">대전광역시 서구_관저문예회관 홈페이지 방문자 현황</span>
+        <div style="text-align:center;">
+            <a href="https://www.data.go.kr/data/15039305/fileData.do" target="_blank" class="source-btn">
+                🔗 원본 데이터 확인하기
             </a>
         </div>
     </div>

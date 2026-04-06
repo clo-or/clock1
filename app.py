@@ -159,7 +159,7 @@ if df_raw is not None and len(df_raw) > 5:
             fig_pre.update_layout(template='plotly_white', title="원본 vs 전처리 비교", hovermode='x unified')
             st.plotly_chart(fig_pre, use_container_width=True)
         else:
-            st.error("데이터 전처리 후 유효한 데이터가 너무 부족합니다.")
+            st.error("유효한 데이터가 너무 부족합니다.")
 
     # ---------------- TAB 2: DECOMPOSITION ----------------
     with tab2:

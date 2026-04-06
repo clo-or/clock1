@@ -61,52 +61,7 @@ st.markdown("""
 h1, h2, h3, p, span, div { color: #1e293b; }
 [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label { color: #1e293b !important; }
 [data-testid="stSidebar"] ::-webkit-scrollbar { width: 0px; background: transparent; }
-.source-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-left: 5px solid #3b82f6;
-    border-radius: 12px;
-    padding: 24px;
-    margin: 10px 0 25px 0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-.source-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #3b82f6;
-    margin-bottom: 8px;
-    display: block;
-}
-.source-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-    flex-wrap: wrap;
-}
-.source-name {
-    font-size: 1.2rem;
-    font-weight: 800;
-    color: #1e293b;
-    margin: 0;
-}
-.source-btn {
-    display: inline-block;
-    background: #3b82f6;
-    color: white !important;
-    padding: 10px 24px;
-    border-radius: 8px;
-    text-decoration: none !important;
-    font-weight: 700;
-    font-size: 0.9rem;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-}
-.source-btn:hover {
-    background: #2563eb;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -163,14 +118,14 @@ if uploaded_file is not None:
 elif st.session_state['use_sample']:
     df_raw = get_sample_data()
     st.markdown("""
-    <div class="source-card">
-        <span class="source-title">💡 데이터 출처</span>
-        <div class="source-row">
-            <h3 class="source-name">대전광역시 서구_관저문예회관 홈페이지 방문자 현황</h3>
-            <a href="https://www.data.go.kr/data/15039305/fileData.do" target="_blank" class="source-btn">
-                🔗 원본 데이터 확인하기
-            </a>
+    <div style="display: flex; align-items: center; justify-content: space-between; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 16px; margin: 10px 0 20px 0;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="background-color: #e0e7ff; color: #4338ca; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 700;">💡 데이터 출처</span>
+            <span style="font-size: 1rem; font-weight: 600; color: #334155;">대전광역시 서구_관저문예회관 홈페이지 방문자 현황</span>
         </div>
+        <a href="https://www.data.go.kr/data/15039305/fileData.do" target="_blank" style="text-decoration: none; background-color: white; border: 1px solid #cbd5e1; color: #475569; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">
+            🔗 원본 링크
+        </a>
     </div>
     """, unsafe_allow_html=True)
 if df_raw is not None:

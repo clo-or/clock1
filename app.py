@@ -116,11 +116,18 @@ if uploaded_file is not None:
         st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
 elif st.session_state['use_sample']:
     df_raw = get_sample_data()
-    col_info, col_btn = st.columns([5, 1])
-    with col_info:
-        st.info("💡 데이터 출처 : 대전광역시 서구_관저문예회관 홈페이지 방문자 현황")
-    with col_btn:
-        st.link_button("🔗 링크 확인", "https://www.data.go.kr/data/15039305/fileData.do", use_container_width=True)
+    st.markdown("""
+    <div style="background-color:#dbeafe; border-left:4px solid #3b82f6; border-radius:8px; padding:14px 20px; color:#1e3a5f;">
+        💡 데이터 출처 : 대전광역시 서구_관저문예회관 홈페이지 방문자 현황
+        <div style="text-align:center; margin-top:10px;">
+            <a href="https://www.data.go.kr/data/15039305/fileData.do" target="_blank"
+               style="display:inline-block; background:#3b82f6; color:white; padding:6px 20px;
+                      border-radius:6px; text-decoration:none; font-weight:600; font-size:0.9rem;">
+                🔗 링크 확인
+            </a>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 if df_raw is not None:
     # 가로형 시계열 데이터 자동 전치 (행은 적은데 열이 많은 경우)
     if len(df_raw) <= 5 and len(df_raw.columns) > 5:

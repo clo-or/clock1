@@ -105,7 +105,6 @@ if uploaded_file is not None:
         st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
 elif st.session_state['use_sample']:
     df_raw = get_sample_data()
-    st.info("💡 강의 실습용 샘플 데이터를 로드했습니다. (결측치 데모 포함)")
 
 if df_raw is not None and len(df_raw) > 5:
     date_col = next((c for c in df_raw.columns if df_raw[c].dtype == 'object' or 'date' in str(df_raw[c].dtype).lower()), df_raw.columns[0])

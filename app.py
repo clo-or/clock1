@@ -116,6 +116,7 @@ if uploaded_file is not None:
         st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
 elif st.session_state['use_sample']:
     df_raw = get_sample_data()
+    st.info("💡 샘플 데이터 명칭: [대전광역시 서구_관저문예회관 홈페이지 방문자 현황](https://www.data.go.kr/data/15039305/fileData.do)")
 if df_raw is not None:
     # 가로형 시계열 데이터 자동 전치 (행은 적은데 열이 많은 경우)
     if len(df_raw) <= 5 and len(df_raw.columns) > 5:

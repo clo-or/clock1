@@ -66,12 +66,20 @@ h1, h2, h3, p, span, div { color: #1e293b; }
 
 @st.cache_data
 def get_sample_data():
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="D")
-    values = np.linspace(10, 50, 100) + np.sin(np.linspace(0, 20, 100)) * 10 + np.random.normal(0, 2, 100)
-    df = pd.DataFrame({"날짜": dates, "판매량": values})
-    # 샘플 데이터 테스트를 위해 결측치 추가 (오류가 없기 위한 정상적인 범위)
-    df.loc[20:25, "판매량"] = np.nan
-    return df
+    import os
+    target_csv = "대전광역시 서구_관저문예회관 홈페이지 방문자 현황_20260324.csv"
+    if os.path.exists(target_csv):
+        df = pd.read_csv(target_csv, encoding='cp949')
+        # 샘플 데이터에 전처리 시연을 위한 가상의 결측치 추가
+        if len(df) > 20:
+            df.loc[10:13, df.columns[2]] = np.nan
+        return df
+    else:
+        dates = pd.date_range(start="2023-01-01", periods=100, freq="D")
+        values = np.linspace(10, 50, 100) + np.sin(np.linspace(0, 20, 100)) * 10 + np.random.normal(0, 2, 100)
+        df = pd.DataFrame({"날짜": dates, "판매량": values})
+        df.loc[20:25, "판매량"] = np.nan
+        return df
 
 # --- UI LAYOUT ---
 st.markdown('<div class="title-gradient">지능형 시계열 예측 시스템</div>', unsafe_allow_html=True)
@@ -97,9 +105,12 @@ if uploaded_file is not None:
 
 df_raw = None
 if uploaded_file is not None:
-    # 쉼표(,) 제거를 고려한 안전한 데이터 파싱
     try:
-        df_raw = pd.read_csv(uploaded_file, thousands=',')
+        try:
+            df_raw = pd.read_csv(uploaded_file, thousands=',')
+        except UnicodeDecodeError:
+            uploaded_file.seek(0)
+            df_raw = pd.read_csv(uploaded_file, thousands=',', encoding='cp949')
         st.success(f"'{uploaded_file.name}' 업로드 성공.")
     except Exception as e:
         st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
@@ -107,13 +118,24 @@ elif st.session_state['use_sample']:
     df_raw = get_sample_data()
 
 if df_raw is not None and len(df_raw) > 5:
-    date_col = next((c for c in df_raw.columns if df_raw[c].dtype == 'object' or 'date' in str(df_raw[c].dtype).lower()), df_raw.columns[0])
-    val_col = next((c for c in df_raw.columns if c != date_col and pd.api.types.is_numeric_dtype(df_raw[c])), df_raw.columns[-1])
+    st.markdown("### 🗂️ 데이터 컬럼 매핑 (전처리)")
+    cols = df_raw.columns.tolist()
+    
+    # 자동 추천 로직
+    def_date = next((c for c in cols if '날짜' in c or 'date' in c.lower() or '일자' in c), cols[0])
+    def_val = next((c for c in reversed(cols) if c != def_date and pd.api.types.is_numeric_dtype(df_raw[c])), cols[-1])
+    
+    col_sel1, col_sel2 = st.columns(2)
+    with col_sel1:
+        date_col = st.selectbox("시간/날짜 컬럼 선택", cols, index=cols.index(def_date) if def_date in cols else 0)
+    with col_sel2:
+        val_col = st.selectbox("분석/예측 대상 컬럼 선택", cols, index=cols.index(def_val) if def_val in cols else len(cols)-1)
     
     df_raw[date_col] = pd.to_datetime(df_raw[date_col], errors='coerce')
     df_raw = df_raw.dropna(subset=[date_col]).sort_values(by=date_col).reset_index(drop=True)
     df_raw[val_col] = pd.to_numeric(df_raw[val_col], errors='coerce')
     
+    st.divider()
     tab1, tab2, tab3 = st.tabs(["🧹 데이터 전처리", "🔍 시계열 분해", "🚀 모델 예측"])
     
     # ---------------- TAB 1: PREPROCESSING ----------------

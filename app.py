@@ -97,7 +97,7 @@ with st.sidebar:
     horizon = st.slider("미래 예측 구간 (시평)", min_value=1, max_value=100, value=12, help="미래에 예측할 기간의 수를 설정합니다.")
     model_choice = st.selectbox("예측 모델 (sktime/statsmodels)", ["Holt-Winters 평활법", "Naive (단순 이동)"])
 
-    st.markdown("<div style='margin-top: 30px; text-align: center; color: #94a3b8; font-size: 0.95em; font-weight: 600;'>C321050 이승아<br>스마트제조 프로젝트 1</div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 30px; text-align: center; color: #94a3b8; font-size: 0.95em; font-weight: 600;'>C321050 이승아<br>시계열분석 프로젝트 1</div>", unsafe_allow_html=True)
 
 st.session_state['use_sample'] = st.session_state.get('use_sample', False)
 if use_sample:

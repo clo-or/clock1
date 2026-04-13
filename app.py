@@ -65,6 +65,7 @@ h1, h2, h3, p, span, div { color: #1e293b; }
 </style>
 """, unsafe_allow_html=True)
 
+
 @st.cache_data
 def get_sample_data():
     import os
